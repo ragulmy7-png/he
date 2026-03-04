@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Web AR Measure Tool</title>
+<title>AR Measure Web App</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body{
@@ -10,6 +10,28 @@ body{
   font-family:system-ui, Arial;
   background:black;
   color:white;
+  overflow:hidden;
+}
+#startScreen{
+  position:fixed;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  background:#000;
+  z-index:20;
+}
+#startScreen h1{margin-bottom:10px}
+#startScreen p{opacity:.7}
+#startBtn{
+  padding:14px 30px;
+  font-size:18px;
+  border:none;
+  border-radius:12px;
+  background:#1e90ff;
+  color:white;
+  margin-top:20px;
 }
 #topbar{
   position:fixed;
@@ -17,16 +39,15 @@ body{
   width:100%;
   padding:10px;
   text-align:center;
-  background:rgba(0,0,0,0.7);
+  background:rgba(0,0,0,.6);
   z-index:10;
 }
 #value{
   position:fixed;
-  bottom:90px;
+  bottom:100px;
   width:100%;
   text-align:center;
   font-size:22px;
-  font-weight:600;
 }
 #controls{
   position:fixed;
@@ -47,7 +68,13 @@ button{
 </head>
 <body>
 
-<div id="topbar">Web AR Measure Tool – Tap twice to measure</div>
+<div id="startScreen">
+  <h1>AR Measure Tool</h1>
+  <p>Tap start to use camera and measure real objects</p>
+  <button id="startBtn">START AR</button>
+</div>
+
+<div id="topbar">Tap once = start point | Tap again = end point</div>
 <div id="value">0.00 cm</div>
 <div id="controls">
   <button onclick="resetMeasure()">Reset</button>
@@ -57,65 +84,69 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/ARButton.js"></script>
 
 <script>
-let scene = new THREE.Scene();
-let camera = new THREE.PerspectiveCamera();
-let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true;
-document.body.appendChild(renderer.domElement);
+let scene,camera,renderer,controller,reticle;
+let hitTestSource=null, refSpace=null;
+let startPoint=null, line=null;
 
-// THIS button will request camera permission
-document.body.appendChild(
-  ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
-);
+document.getElementById("startBtn").onclick = async ()=>{
+  document.getElementById("startScreen").style.display="none";
+  initAR();
+};
 
-let light = new THREE.HemisphereLight(0xffffff,0xbbbbff,1);
-scene.add(light);
+function initAR(){
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera();
 
-let controller = renderer.xr.getController(0);
-controller.addEventListener("select", onSelect);
-scene.add(controller);
+  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled=true;
+  document.body.appendChild(renderer.domElement);
 
-// Reticle
-let reticle;
-const ringGeo = new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2);
-const ringMat = new THREE.MeshBasicMaterial({color:0x00ff00});
-reticle = new THREE.Mesh(ringGeo, ringMat);
-reticle.matrixAutoUpdate = false;
-reticle.visible = false;
-scene.add(reticle);
+  document.body.appendChild(
+    ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
+  );
 
-let hitTestSource = null;
-let refSpace = null;
+  const light = new THREE.HemisphereLight(0xffffff,0xbbbbff,1);
+  scene.add(light);
 
-renderer.xr.addEventListener("sessionstart", async ()=>{
-  const session = renderer.xr.getSession();
-  const viewerSpace = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({space: viewerSpace});
-  refSpace = await session.requestReferenceSpace('local');
-});
+  controller = renderer.xr.getController(0);
+  controller.addEventListener("select", onSelect);
+  scene.add(controller);
 
-// Measure logic
-let startPoint = null;
-let line = null;
+  const geo = new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({color:0x00ff00});
+  reticle = new THREE.Mesh(geo,mat);
+  reticle.matrixAutoUpdate=false;
+  reticle.visible=false;
+  scene.add(reticle);
+
+  renderer.xr.addEventListener("sessionstart", async ()=>{
+    const session = renderer.xr.getSession();
+    const viewerSpace = await session.requestReferenceSpace("viewer");
+    hitTestSource = await session.requestHitTestSource({space:viewerSpace});
+    refSpace = await session.requestReferenceSpace("local");
+  });
+
+  renderer.setAnimationLoop(render);
+}
 
 function onSelect(){
   if(!reticle.visible) return;
-  const pos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+  const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
 
   if(!startPoint){
-    startPoint = pos.clone();
-    drawLine(startPoint, startPoint);
+    startPoint = p.clone();
+    drawLine(startPoint,startPoint);
   }else{
-    startPoint = null;
+    startPoint=null;
   }
 }
 
 function drawLine(a,b){
   if(line) scene.remove(line);
-  const geometry = new THREE.BufferGeometry().setFromPoints([a,b]);
-  const material = new THREE.LineBasicMaterial({color:0xff0000});
-  line = new THREE.Line(geometry, material);
+  const g = new THREE.BufferGeometry().setFromPoints([a,b]);
+  const m = new THREE.LineBasicMaterial({color:0xff0000});
+  line = new THREE.Line(g,m);
   scene.add(line);
 }
 
@@ -132,27 +163,26 @@ function resetMeasure(){
   document.getElementById("value").innerText="0.00 cm";
 }
 
-// Render loop
-renderer.setAnimationLoop((t,frame)=>{
-  if(frame){
+function render(t,frame){
+  if(frame && hitTestSource){
     const hits = frame.getHitTestResults(hitTestSource);
     if(hits.length){
       const pose = hits[0].getPose(refSpace);
-      reticle.visible = true;
+      reticle.visible=true;
       reticle.matrix.fromArray(pose.transform.matrix);
 
       if(startPoint && line){
-        const current = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-        updateLine(startPoint, current);
-        const dist = startPoint.distanceTo(current);
-        document.getElementById("value").innerText = (dist*100).toFixed(2) + " cm";
+        const cur = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+        updateLine(startPoint,cur);
+        const d = startPoint.distanceTo(cur);
+        document.getElementById("value").innerText=(d*100).toFixed(2)+" cm";
       }
     }else{
       reticle.visible=false;
     }
   }
   renderer.render(scene,camera);
-});
+}
 </script>
 </body>
 </html>
