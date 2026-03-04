@@ -5,147 +5,34 @@
 <title>Web AR Measure</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{
-  margin:0;
-  font-family:system-ui;
-  background:black;
-  color:white;
-}
-#topbar{
-  position:fixed;
-  top:0;
-  width:100%;
-  text-align:center;
-  padding:10px;
-  background:rgba(0,0,0,0.7);
-  z-index:10;
-}
-#value{
-  position:fixed;
-  bottom:90px;
-  width:100%;
-  text-align:center;
-  font-size:22px;
-  font-weight:600;
-}
-#controls{
-  position:fixed;
-  bottom:20px;
-  width:100%;
-  display:flex;
-  justify-content:center;
-}
-button{
-  padding:12px 20px;
-  border:none;
-  border-radius:10px;
-  font-size:15px;
-  background:#1e90ff;
-  color:white;
+body{margin:0;font-family:system-ui;background:black;color:white}
+#msg{
+ position:fixed;top:0;width:100%;
+ background:rgba(0,0,0,.7);
+ text-align:center;padding:10px;
 }
 </style>
 </head>
 <body>
 
-<div id="topbar">Web AR Measure – Tap to place start & end</div>
-<div id="value">0.00 cm</div>
-<div id="controls">
-  <button onclick="resetMeasure()">Reset</button>
-</div>
+<div id="msg">Press START AR</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/ARButton.js"></script>
 
 <script>
-let scene = new THREE.Scene();
-let camera = new THREE.PerspectiveCamera();
-let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true;
+let scene,camera,renderer;
+
+scene=new THREE.Scene();
+camera=new THREE.PerspectiveCamera();
+renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.xr.enabled=true;
 document.body.appendChild(renderer.domElement);
+
 document.body.appendChild(ARButton.createButton(renderer,{requiredFeatures:['hit-test']}));
 
-let light = new THREE.HemisphereLight(0xffffff,0xbbbbff,1);
-scene.add(light);
-
-let controller = renderer.xr.getController(0);
-controller.addEventListener("select", onSelect);
-scene.add(controller);
-
-let reticle;
-const ringGeo = new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2);
-const ringMat = new THREE.MeshBasicMaterial({color:0x00ff00});
-reticle = new THREE.Mesh(ringGeo, ringMat);
-reticle.matrixAutoUpdate = false;
-reticle.visible = false;
-scene.add(reticle);
-
-let hitTestSource = null;
-let refSpace = null;
-
-renderer.xr.addEventListener("sessionstart", async ()=>{
-  const session = renderer.xr.getSession();
-  const viewerSpace = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({space: viewerSpace});
-  refSpace = await session.requestReferenceSpace('local');
-});
-
-let startPoint = null;
-let line = null;
-
-function onSelect(){
-  if(!reticle.visible) return;
-  const pos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-
-  if(!startPoint){
-    startPoint = pos.clone();
-    drawLine(startPoint, startPoint);
-  }else{
-    startPoint = null;
-  }
-}
-
-function drawLine(a,b){
-  if(line) scene.remove(line);
-  const geometry = new THREE.BufferGeometry().setFromPoints([a,b]);
-  const material = new THREE.LineBasicMaterial({color:0xff0000});
-  line = new THREE.Line(geometry, material);
-  scene.add(line);
-}
-
-function updateLine(a,b){
-  const arr = line.geometry.attributes.position.array;
-  arr[3]=b.x; arr[4]=b.y; arr[5]=b.z;
-  line.geometry.attributes.position.needsUpdate=true;
-}
-
-function resetMeasure(){
-  if(line) scene.remove(line);
-  line=null;
-  startPoint=null;
-  document.getElementById("value").innerText="0.00 cm";
-}
-
-renderer.setAnimationLoop((t,frame)=>{
-  if(frame){
-    const hits = frame.getHitTestResults(hitTestSource);
-    if(hits.length){
-      const pose = hits[0].getPose(refSpace);
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
-
-      if(startPoint && line){
-        const current = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-        updateLine(startPoint, current);
-        const dist = startPoint.distanceTo(current);
-        document.getElementById("value").innerText = (dist*100).toFixed(2) + " cm";
-      }
-    }else{
-      reticle.visible=false;
-    }
-  }
-  renderer.render(scene,camera);
-});
+renderer.setAnimationLoop(()=>{renderer.render(scene,camera)});
 </script>
 </body>
 </html>
