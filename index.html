@@ -1,187 +1,129 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>AR Measure Web App</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<title>Web AR Measure</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{
-  margin:0;
-  font-family:system-ui, Arial;
-  background:black;
-  color:white;
-  overflow:hidden;
+body{margin:0;background:black;color:white;font-family:system-ui}
+#start{
+position:fixed;inset:0;display:flex;flex-direction:column;
+justify-content:center;align-items:center;background:black;z-index:10
 }
-#startScreen{
-  position:fixed;
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  background:#000;
-  z-index:20;
+#start button{
+padding:15px 30px;font-size:18px;border:none;border-radius:12px;
+background:#1e90ff;color:white
 }
-#startScreen h1{margin-bottom:10px}
-#startScreen p{opacity:.7}
-#startBtn{
-  padding:14px 30px;
-  font-size:18px;
-  border:none;
-  border-radius:12px;
-  background:#1e90ff;
-  color:white;
-  margin-top:20px;
+#top{
+position:fixed;top:10px;width:100%;text-align:center;font-size:18px
 }
-#topbar{
-  position:fixed;
-  top:0;
-  width:100%;
-  padding:10px;
-  text-align:center;
-  background:rgba(0,0,0,.6);
-  z-index:10;
-}
-#value{
-  position:fixed;
-  bottom:100px;
-  width:100%;
-  text-align:center;
-  font-size:22px;
-}
-#controls{
-  position:fixed;
-  bottom:20px;
-  width:100%;
-  display:flex;
-  justify-content:center;
+#bottom{
+position:fixed;bottom:20px;width:100%;text-align:center
 }
 button{
-  padding:12px 20px;
-  border:none;
-  border-radius:10px;
-  font-size:15px;
-  background:#1e90ff;
-  color:white;
+padding:12px 22px;font-size:15px;border:none;border-radius:10px;
+background:#1e90ff;color:white
 }
 </style>
 </head>
 <body>
 
-<div id="startScreen">
-  <h1>AR Measure Tool</h1>
-  <p>Tap start to use camera and measure real objects</p>
-  <button id="startBtn">START AR</button>
+<div id="start">
+  <h2>AR Measure Tool</h2>
+  <p>Tap start to use camera</p>
+  <button onclick="startAR()">START</button>
 </div>
 
-<div id="topbar">Tap once = start point | Tap again = end point</div>
-<div id="value">0.00 cm</div>
-<div id="controls">
-  <button onclick="resetMeasure()">Reset</button>
-</div>
+<div id="top">Tap twice to measure</div>
+<div id="bottom"><button onclick="reset()">Reset</button></div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/ARButton.js"></script>
 
 <script>
 let scene,camera,renderer,controller,reticle;
-let hitTestSource=null, refSpace=null;
-let startPoint=null, line=null;
+let hitSource=null,refSpace=null;
+let startPoint=null,line=null;
 
-document.getElementById("startBtn").onclick = async ()=>{
-  document.getElementById("startScreen").style.display="none";
-  initAR();
-};
+function startAR(){
+ document.getElementById("start").style.display="none";
 
-function initAR(){
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera();
+ scene=new THREE.Scene();
+ camera=new THREE.PerspectiveCamera();
+ renderer=new THREE.WebGLRenderer({alpha:true});
+ renderer.setSize(window.innerWidth,window.innerHeight);
+ renderer.xr.enabled=true;
+ document.body.appendChild(renderer.domElement);
+ document.body.appendChild(
+   ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
+ );
 
-  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled=true;
-  document.body.appendChild(renderer.domElement);
+ let light=new THREE.HemisphereLight(0xffffff,0xbbbbff,1);
+ scene.add(light);
 
-  document.body.appendChild(
-    ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
-  );
+ controller=renderer.xr.getController(0);
+ controller.addEventListener("select",tap);
+ scene.add(controller);
 
-  const light = new THREE.HemisphereLight(0xffffff,0xbbbbff,1);
-  scene.add(light);
+ reticle=new THREE.Mesh(
+  new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({color:0x00ff00})
+ );
+ reticle.matrixAutoUpdate=false;
+ reticle.visible=false;
+ scene.add(reticle);
 
-  controller = renderer.xr.getController(0);
-  controller.addEventListener("select", onSelect);
-  scene.add(controller);
+ renderer.xr.addEventListener("sessionstart",async()=>{
+   let s=renderer.xr.getSession();
+   let v=await s.requestReferenceSpace("viewer");
+   hitSource=await s.requestHitTestSource({space:v});
+   refSpace=await s.requestReferenceSpace("local");
+ });
 
-  const geo = new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2);
-  const mat = new THREE.MeshBasicMaterial({color:0x00ff00});
-  reticle = new THREE.Mesh(geo,mat);
-  reticle.matrixAutoUpdate=false;
-  reticle.visible=false;
-  scene.add(reticle);
-
-  renderer.xr.addEventListener("sessionstart", async ()=>{
-    const session = renderer.xr.getSession();
-    const viewerSpace = await session.requestReferenceSpace("viewer");
-    hitTestSource = await session.requestHitTestSource({space:viewerSpace});
-    refSpace = await session.requestReferenceSpace("local");
-  });
-
-  renderer.setAnimationLoop(render);
+ renderer.setAnimationLoop(render);
 }
 
-function onSelect(){
-  if(!reticle.visible) return;
-  const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-
-  if(!startPoint){
-    startPoint = p.clone();
-    drawLine(startPoint,startPoint);
-  }else{
-    startPoint=null;
-  }
+function tap(){
+ if(!reticle.visible)return;
+ let p=new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+ if(!startPoint){
+   startPoint=p.clone();
+   draw(startPoint,startPoint);
+ }else startPoint=null;
 }
 
-function drawLine(a,b){
-  if(line) scene.remove(line);
-  const g = new THREE.BufferGeometry().setFromPoints([a,b]);
-  const m = new THREE.LineBasicMaterial({color:0xff0000});
-  line = new THREE.Line(g,m);
-  scene.add(line);
+function draw(a,b){
+ if(line)scene.remove(line);
+ let g=new THREE.BufferGeometry().setFromPoints([a,b]);
+ line=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xff0000}));
+ scene.add(line);
 }
 
-function updateLine(a,b){
-  const arr = line.geometry.attributes.position.array;
-  arr[3]=b.x; arr[4]=b.y; arr[5]=b.z;
-  line.geometry.attributes.position.needsUpdate=true;
-}
-
-function resetMeasure(){
-  if(line) scene.remove(line);
-  line=null;
-  startPoint=null;
-  document.getElementById("value").innerText="0.00 cm";
+function reset(){
+ if(line)scene.remove(line);
+ line=null;startPoint=null;
+ document.getElementById("top").innerText="Tap twice to measure";
 }
 
 function render(t,frame){
-  if(frame && hitTestSource){
-    const hits = frame.getHitTestResults(hitTestSource);
-    if(hits.length){
-      const pose = hits[0].getPose(refSpace);
-      reticle.visible=true;
-      reticle.matrix.fromArray(pose.transform.matrix);
+ if(frame&&hitSource){
+  let hits=frame.getHitTestResults(hitSource);
+  if(hits.length){
+   let pose=hits[0].getPose(refSpace);
+   reticle.visible=true;
+   reticle.matrix.fromArray(pose.transform.matrix);
 
-      if(startPoint && line){
-        const cur = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-        updateLine(startPoint,cur);
-        const d = startPoint.distanceTo(cur);
-        document.getElementById("value").innerText=(d*100).toFixed(2)+" cm";
-      }
-    }else{
-      reticle.visible=false;
-    }
-  }
-  renderer.render(scene,camera);
+   if(startPoint&&line){
+    let c=new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+    let arr=line.geometry.attributes.position.array;
+    arr[3]=c.x;arr[4]=c.y;arr[5]=c.z;
+    line.geometry.attributes.position.needsUpdate=true;
+    let d=startPoint.distanceTo(c);
+    document.getElementById("top").innerText=(d*100).toFixed(2)+" cm";
+   }
+  }else reticle.visible=false;
+ }
+ renderer.render(scene,camera);
 }
 </script>
 </body>
