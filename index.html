@@ -57,16 +57,6 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/ARButton.js"></script>
 
 <script>
-/* ---------- CAMERA PERMISSION TEST ---------- */
-navigator.mediaDevices.getUserMedia({ video:true })
-.then(stream=>{
-  stream.getTracks().forEach(t=>t.stop());
-})
-.catch(err=>{
-  alert("Camera blocked: " + err);
-});
-
-/* ---------- AR SETUP ---------- */
 let scene = new THREE.Scene();
 let camera = new THREE.PerspectiveCamera();
 let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
@@ -74,6 +64,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 
+// THIS button will request camera permission
 document.body.appendChild(
   ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
 );
@@ -85,7 +76,7 @@ let controller = renderer.xr.getController(0);
 controller.addEventListener("select", onSelect);
 scene.add(controller);
 
-/* ---------- RETICLE ---------- */
+// Reticle
 let reticle;
 const ringGeo = new THREE.RingGeometry(0.07,0.09,32).rotateX(-Math.PI/2);
 const ringMat = new THREE.MeshBasicMaterial({color:0x00ff00});
@@ -104,7 +95,7 @@ renderer.xr.addEventListener("sessionstart", async ()=>{
   refSpace = await session.requestReferenceSpace('local');
 });
 
-/* ---------- MEASURE LOGIC ---------- */
+// Measure logic
 let startPoint = null;
 let line = null;
 
@@ -141,7 +132,7 @@ function resetMeasure(){
   document.getElementById("value").innerText="0.00 cm";
 }
 
-/* ---------- RENDER LOOP ---------- */
+// Render loop
 renderer.setAnimationLoop((t,frame)=>{
   if(frame){
     const hits = frame.getHitTestResults(hitTestSource);
@@ -163,6 +154,5 @@ renderer.setAnimationLoop((t,frame)=>{
   renderer.render(scene,camera);
 });
 </script>
-
 </body>
 </html>
